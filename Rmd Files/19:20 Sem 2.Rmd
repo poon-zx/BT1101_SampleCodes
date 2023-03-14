@@ -1,0 +1,340 @@
+---
+title: "1920SEM2"
+output: html_document
+---
+
+```{r preparation, echo=TRUE, warning = FALSE, message = FALSE}
+# general use
+library(readxl) 
+library(dplyr) 
+library(tidyr) 
+library(ggplot2) 
+library(wooldridge)
+
+# descriptive analytics
+library(psych)
+library(Rmisc) 
+library(rcompanion) 
+library(rpivotTable) 
+library(EnvStats) 
+library(car)
+
+# predictive/prescriptive analytics
+library(TTR) 
+library(forecast) 
+library(olsrr) 
+library(factoextra) 
+library(caret)
+library(tseries)
+library(lpSolve)
+library(rstatix)
+```
+
+## Question 1 (CEO Salary)
+
+```{r load-ceosal1, echo=TRUE}
+data('ceosal1')
+CS <- ceosal1
+```
+
+#### a)i) Plot a histogram for salary. What can you deduce about the distribution of CEO salaries from this histogram? (1 mark)
+
+```{r q1ai, echo=TRUE}
+h.sal <- hist(CS$`salary`, main = "Histogram of CEO Salaries (in thousands)", xlab = "Salary (in thousands)", ylab = "No. of People", 
+             col = c("darkorange"), ylim = c(0,220), labels = TRUE, xaxp = c(0, 20000, 10))
+
+```
+
+From this histogram, we can conclude that the data is positively skewed. Most people lie in the range of (0, 2000], with the highest salary being recorded in the range of (14000, 16000].
+
+#### a)ii) Compute the prediction intervals for the salary of a CEO using alpha=0.05. What does this prediction interval tell us (2 marks)?
+
+```{r q1aii, echo=TRUE}
+
+# Check normality
+qqnorm(CS$salary, ylab="Sample Quantiles for `salary`")
+qqline(CS$salary, col = "red")
+
+shapiro.test(CS$salary)
+
+# Since data isn't normally distributed, transform data to normal distribution using transformTukey
+CS$salary.t = transformTukey(CS$salary, plotit=TRUE)
+
+# using x^ lambda where lambda = -0.3
+mnpric.t <- mean(CS$salary.t)
+sdpric.t <- sd(CS$salary.t)
+IPI.pricc <- mnpric.t + (qt(0.025, df = (nrow(CS)-1))*sdpric.t*sqrt(1+1/nrow(CS)))
+uPI.pricc <- mnpric.t - (qt(0.025, df = (nrow(CS)-1))*sdpric.t*sqrt(1+1/nrow(CS)))
+# reverse transform
+# y = x ^ lambda
+# y = x ^ -0.3
+# x = -1 * y ^ (1/-0.3)
+IPI.sal <- (-1*IPI.pricc) ^ (1/-0.3)
+uPI.sal <- (-1*uPI.pricc) ^ (1/-0.3)
+print(cbind(IPI.sal, uPI.sal), digits = 4)
+```
+
+Since the computation of prediction intervals assumes that the data is normally distributed, we must first check whether `salary` follows a normal distribution. As seen from the Shapiro-Wilk Test where the W value is low and p-value is \< 0.05, we reject the null hypothesis that the data is following a normal distribution. Hence, before computing the prediction intervals we must use TransformTukey to transform the data into following a normal distribution first.
+
+The prediction interval is a range for predicting the value of a new observation from the same population. The 95% prediction interval (due to alpha = 0.05) is [395.3, 3601], which means that we can be 95% sure that the next new CEO salary observation will fall within this range.
+
+#### b) In the past, the proportion of CEO with salary greater than or equal to \$1 million has averaged around 0.50 (i.e. population proportion for salary \>= 1million is 0.50). Based on the sample in this dataset, is there sufficient evidence to conclude that the population proportion for salary being greater than or equal to \$1million is equal to 0.5? State your hypotheses and conclusions in your answers. (3 marks)
+
+```{r q1b, echo=TRUE}
+
+richCS <- CS %>% 
+  filter(salary >= 1000)
+prich <- nrow(richCS) / nrow(CS)
+z <- (prich - 0.5) / sqrt(0.5*(1-0.5)/nrow(CS))
+cv <- qnorm(0.05/2)
+cv1 <- qnorm(1 - 0.05/2)
+z < cv
+z > cv1
+```
+
+Let the population proportion of CEOs with a salary greater than or equal to \$1 million be u1.
+
+H0: u1 = 0.5, H1: u1 != 0.5
+
+Since the z value is in between the two critical values, the z-statistic does not lie in either the lower or upper critical region, hence we accept H0. Thus the data shows that the population proportion of CEOs with a salary greater than or equal to \$1 million is equal to 0.5 at a significance level of 5%.
+
+#### c)i) First, create a variable firm and label it as "1" if it is an industrial firm, "2" if it is a financial firm, "3" if it is a consumer product firm, and "4" if it is a transport or utilities firm. (1 mark)
+
+```{r q1ci, echo=TRUE}
+
+# create new categorical variable called "firm"
+CS$firm <- NA
+CS$firm[CS$indus==1] <- 1
+CS$firm[CS$finance==1] <- 2
+CS$firm[CS$consprod==1] <- 3
+CS$firm[CS$utility==1] <- 4
+CS$firm <- as.factor(CS$firm)
+levels(CS$firm)
+```
+
+#### ii) Now, conduct the appropriate test(s) to assess if the mean CEO salary is significantly different across firm type. Present your hypotheses, the results and conclusions. (6 marks)
+
+```{r q1cii, echo=TRUE}
+
+# since there are more than two sample test for means, use ANOVA
+# H0: all means same, H1: at least one mean is different from the others
+# for reliable ANOVA results, must satisfy three assumptions: 1. data points independent 2. within groups, data normally distributed 3. distributions equal variance
+
+# check normality across different groups
+par(mfcol = c(2,2))
+one <- CS %>% filter(firm == 1)
+two <- CS %>% filter(firm == 2)
+three <- CS %>% filter(firm == 3)
+four <- CS %>% filter(firm == 4) 
+# plot histogram
+hist(one$salary, main = "Histogram for industrial firms", xlab = "Salary")
+hist(two$salary, main = "Histogram for financial firms", xlab = "Salary")
+hist(three$salary, main = "Histogram for consumer product firms", xlab = "Salary")
+hist(four$salary, main = "Histogram for transport or utilities firm", xlab = "Salary")
+
+# plot qqplots
+par(mfcol = c(2,2))
+qqnorm(one$salary, main = "QQplot for industrial firms", ylab = "Salary")
+qqline(one$salary)
+qqnorm(two$salary, main = "QQplot for financial firms", ylab = "Salary")
+qqline(two$salary)
+qqnorm(three$salary, main = "QQplot for consumer product firms`", ylab = "Salary")
+qqline(three$salary)
+qqnorm(four$salary, main = "QQplot for transport or utilities firm`", ylab = "Salary")
+qqline(four$salary)
+
+# Shapiro Wilk Test
+lapply(list(one, two, three, four), function(CS)
+  {
+  shapiro.test(CS$salary)
+})
+
+# check sample sizes across age groups (if group sizes are similar, ANOVA is fairly robust to unequal variances)
+table(CS$firm)
+
+# check equal variance assumption
+fligner.test(salary~firm, CS)
+
+# Welch Anova Test
+wa <- CS %>% welch_anova_test(salary~firm)
+wa
+
+# games howell test 
+gh.out1 <- games_howell_test(CS, salary~firm)
+gh.out1
+```
+
+We will use an ANOVA test. However for the ANOVA test results to be reliable, it assumes three conditions: 1. data points independent 2. within groups, data normally distributed 3. distributions equal variance. The first point can be easily validated as random samples were chosen. Next we have to verify if the data is normally distributed, which as seen the various tests that salary does not follow a normal distribution. However, ANOVA is fairly robust to departures from normality.
+
+Using the Fligner-Killeen test of homogeneity of variances to check whether the samples have equal variances, we got a p-value of \<0.05. This means we reject the null hypothesis that all input samples are from populations with equal variances. If samples sizes are equal, the violation of the third assumption (equal variances) would not have serious effects, however as seen above the sample sizes differ greatly for transport or utilities firms. Hence, we will use the Welch ANOVA test instead.
+
+For Welch-ANOVA test, let u1, u2, u3 and u4 be the mean CEO salaries for the 4 firm types respectively.
+
+H0: u1 = u2 = u3 = u4, H1: at least one mean is different from the others
+
+As seen from the Welch-ANOVA test, the p-value \< 0.05 which means that we can reject the null hypothesis that the mean CEO salary is the same across firm types. Hence we can conclude that the mean CEO salary is significantly different across firm types at a 5% level of significance.
+
+As seen from the Games-Howell post HOC test, there is a significant difference between the mean salaries of the firm type combinations of 1 and 4, 2 and 4, 3 and 4, since p-value \< 0.05 for these combinations, which suggests that firm type 4 CEOs have significantly different salaries.
+
+# Question 2 (Family Savings)
+
+```{r load-gpa2}
+# load the data set, make sure you already loaded `wooldridge` package
+data("saving")
+SA <- saving
+```
+
+#### (a) It is interesting to explain the individual saving sav from various explanatory variables.
+
+#### - Run a linear regression model of sav \~ inc + cons, report the regression output and write out the fitted line. (2 points)
+
+```{r q2a, echo=TRUE}
+sav_mod <- lm(sav ~ inc + cons, SA)
+summary(sav_mod)
+```
+
+sav = 7.276e-12 + 1.00 \* (inc) - 1.00 \* (cons)
+
+#### - Interpret the intercept as well as the coefficients before inc and cons. (3 points)
+
+The intercept, 7.276e-12, is the mean value of annual savings (`sav`) when all other independent variables are at level zero. Since the magnitude of the t-value is large at 8.188 and the p-value is \< 0.05, we reject H0 that the intercept = 0 and conclude that the intercept is significant.
+
+The coefficient before `inc` is 1, which means that on average, a one unit increase in average `inc` (i.e. a \$1 increase in average annual income), average `sav` increases by 1 unit (i.e. average annual savings increases by \$1), when all other independent variables are held constant. Since the magnitude of the t-value is quite large at 7.117e+15 and the p-value is \< 0.05, we reject H0 that the slope parameter of `inc` = 0 and conclude that the coefficient of `inc` is significant.
+
+The coefficient before `cons` is 1, which means that on average, a one unit increase in average `cons` (i.e. a \$1 increase in average annual consumption), average `sav` decreases by 1 unit (i.e. average annual savings decreases by \$1), when all other independent variables are held constant. Since the magnitude of the t-value is quite large at 7.303e+15 and the p-value is \< 0.05, we reject H0 that the slope parameter of `cons` = 0 and conclude that the coefficient of `cons` is significant.
+
+#### - Can we use sav, cons and inc altogether as explanatory variables in linear regression? Why or why not? (2 points)
+
+No, we cannot due to the direct correlation between one's annual savings, annual income as well as annual consumption. Multicollinearity occurs when two or more regressors are highly correlated with each other. In this case, inc - cons = saving. Thus, it is difficult to estimate the errors, which leads to inflated estimates of errors. Also, coefficient for inc and cons are merely definitions of annual income and annual consumption. They are not useful in determining relationships between saving and other regressors.
+
+#### (b) Some labor economists believe that individual consumption is affected not only by income but by his or her education level nonlinearly as well. Let's first create the following variable educsq which is equal to square of educ.
+
+```{r q2b, echo=TRUE}
+SA$educsq = SA$educ^2
+```
+
+#### i) Investigate the relationship between cons and inc visually. Is there a linear relationship between the two? (1 point)
+
+```{r q2bi, echo=TRUE}
+ggplot(SA, aes(x = inc, y = cons)) + geom_point() + theme_bw()
+```
+
+We can see a linear and positive relationship between `inc` and `cons`.
+
+#### ii) Run and report a linear regression of inc, educ and educsq to explain cons. What's the marginal effect of education on consumption for those individuals' education level being 6 year? Interpret this marginal effect. (3 points)
+
+```{r 2bii, echo=TRUE}
+lol <- lm(cons ~ inc + educ + educsq, SA)
+summary(lol)
+
+(386.4993 + 2* -22.9192 * 6) 
+```
+
+Equation: `cons` = b0 (intercept) + b1 \* `inc` + b2 \* `educ` + b3 \* `educsq`, where b0 = -1702.0420, b1 = 0.8979, b2 = 386.4993 and b3 = -22.9192.
+
+The marginal effect of education on `cons` can be obtained by performing differentiation with respect to `educ`. Hence marginal effect = b2 + 2 \* b3 \* `educ`. By substituting the value of `educ` = 6, the marginal effect of education on consumption for those individuals' education level being 6 year is 111.5 (to 1 d.p.). On average, when `educ` = 6, with an additional year of education, there is an expected increase of the average annual consumption by \$111.5, when all other independent variables are held constant.
+
+#### (c) From the regression output in part (b), Is there a nonlinear relationship between education and consumption? Why or why not? (1 points) Check the assumptions and discuss what you find. Which assumption(s) are you worry about? (3 points)
+
+```{r 2c, echo=TRUE}
+resid_wh = resid(lol)
+
+# residual Q-Q plot
+plot(lol, 2)
+
+# residual plot of resid_wh vs inc
+plot(SA$inc, resid_wh, main = "Residual Plot of resid vs. income", xlab = "Annual Income", ylab = "Residuals")
+abline(0, 0, lty = 'longdash')
+```
+
+As seen in the regression model, the magnitude of the t-value of b3 (coefficient of `educsq`) is slightly higher than that of 2 (coefficient of `educ`), the p-value is also lower. However, since the p-value of both b2 and b3 are \> 0.05, which suggests that we can accept H0 that b2 and b3 are equal to 0 and hence the two coefficients are not significantly different from zero. Hence, we cannot draw any conclusions on whether there is a nonlinear relationship between education and consumption. $\beta_0$
+
+One of the assumptions to be worried about would be that the error is normally distributed. After plotting the residual Q-Q plot, we can see that the lower and higher quantiles of data points deviates from a normal distribution, hence not fulfilling the assumption of a normal distribution of error. However, the residual plot against `inc` resembles a random scatter of points forming an approximately constant width band around the line at y = 0, hence indicating that the assumptions of Mean-Zero error is met. However, it can be seen that the variance of the residuals is generally larger when annual income increases, hence this does not fulfill the assumption of homoskedasticity.
+
+# Question 4 - PC Parts
+
+#### (a) Write down your decision variables, the objective function, and ALL constraints that apply for this optimization problem in a table. You do not need solve the problem for now. (5 points)
+
+| Minimize total cost using decision variables $X_1$, $X_2$, $X_3$, $X_4$, $X_5$ = number of Intel i9, AMD Ryzen, Nvidia RTX 2080, AMD Radeon 56 and 8G RAM card respectively to use for assembly | Cost = 499 $X_1$ + 450 $X_2$ + 1099 $X_3$ + 627 $X_4$ + 100 $X_5$ |
+|-----------------------------------------------------|-------------------|
+| Subject to                                                                                                                                                                                      |                                                                   |
+| CPU Motherboard and Working PC Constraint                                                                                                                                                       | $X_1$ + $X_2$ = 1                                                 |
+| GPU Motherboard Constraint                                                                                                                                                                      | $X_3$ + $X_4$ $\leq$ 2                                            |
+| GPU Working PC Constraint                                                                                                                                                                       | $X_3$ + $X_4$ $\geq$ 1                                            |
+| RAM Motherboard Constraint                                                                                                                                                                      | $X_5$ $\geq$ 1                                                    |
+| RAM Working PC Constraint                                                                                                                                                                       | $X_5$ $\leq$ 4                                                    |
+| Intel i9 Stock Constraint                                                                                                                                                                       | $X_1$ $\leq$ 1                                                    |
+| AMD Ryzen Stock Constraint                                                                                                                                                                      | $X_2$ $\leq$ 1                                                    |
+| Nvidia RTX 2080 Stock Constraint                                                                                                                                                                | $X_3$ $\leq$ 1                                                    |
+| AMD Radeon 56 Stock Constraint                                                                                                                                                                  | $X_4$ $\leq$ 3                                                    |
+| 8G RAM card Stock Constraint                                                                                                                                                                    | $X_5$ $\leq$ 8                                                    |
+| Minimum FPS Constraint                                                                                                                                                                          | 20 $X_1$ + 18 $X_2$ + 90 $X_3$ + 75 $X_4$ + 10 $X_5$ $\geq$ 144   |
+| Integer, Non-Negativity Constraints                                                                                                                                                             | $X_1$ to $X_5$ are integers and $\geq$ 0                          |
+
+#### (b) Your trustworthy shop specialist strongly recommended if you choose to get the Nvidia RTX 2080 GPU, your PC needs at least 16GB of RAM.
+
+#### - Write down the constraint in its math expression. (2 points)
+
+$X_5$ - 2 $X_3$ $\geq$ 0
+
+#### - As you decide to follow the specialist's suggestion, solve this problem in R. Which part(s) should you purchase to assemble your gaming PC? How much do you spend on it? (4 points)
+
+| Minimize total cost using decision variables $X_1$, $X_2$, $X_3$, $X_4$, $X_5$ = number of Intel i9, AMD Ryzen, Nvidia RTX 2080, AMD Radeon 56 and 8G RAM card respectively to use for assembly | Cost = 499 $X_1$ + 450 $X_2$ + 1099 $X_3$ + 627 $X_4$ + 100 $X_5$ |
+|-----------------------------------------------------|-------------------|
+| Subject to                                                                                                                                                                                      |                                                                   |
+| CPU Motherboard and Working PC Constraint                                                                                                                                                       | $X_1$ + $X_2$ = 1                                                 |
+| GPU Motherboard Constraint                                                                                                                                                                      | $X_3$ + $X_4$ $\leq$ 2                                            |
+| GPU Working PC Constraint                                                                                                                                                                       | $X_3$ + $X_4$ $\geq$ 1                                            |
+| RAM Motherboard Constraint                                                                                                                                                                      | $X_5$ $\geq$ 1                                                    |
+| RAM Working PC Constraint                                                                                                                                                                       | $X_5$ $\leq$ 4                                                    |
+| Intel i9 Stock Constraint                                                                                                                                                                       | $X_1$ $\leq$ 1                                                    |
+| AMD Ryzen Stock Constraint                                                                                                                                                                      | $X_2$ $\leq$ 1                                                    |
+| Nvidia RTX 2080 Stock Constraint                                                                                                                                                                | $X_3$ $\leq$ 1                                                    |
+| AMD Radeon 56 Stock Constraint                                                                                                                                                                  | $X_4$ $\leq$ 3                                                    |
+| 8G RAM card Stock Constraint                                                                                                                                                                    | $X_5$ $\leq$ 8                                                    |
+| Minimum FPS Constraint                                                                                                                                                                          | 20 $X_1$ + 18 $X_2$ + 90 $X_3$ + 75 $X_4$ + 10 $X_5$ $\geq$ 144   |
+| 16GB of RAM with Nvidia RTX 2080 Constraint                                                                                                                                                     | $X_5$ - 2 $X_3$ $\geq$ 0                                          |
+| Integer, Non-Negativity Constraints                                                                                                                                                             | $X_1$ to $X_5$ are integers and $\geq$ 0                          |
+
+```{r 3c, echo=TRUE}
+# don't include non-negativity constraints
+objective.fn <- c(499, 450, 1099, 627, 100)
+const.mat <- matrix(c(1, 1, rep(0, 3),
+                      0, 0, 1, 1, 0,
+                      0, 0, 1, 1, 0,
+                      rep(0, 4), 1,
+                      rep(0, 4), 1,
+                      1, rep(0, 4),
+                      0, 1, rep(0, 3),
+                      0, 0, 1, 0, 0,
+                      rep(0,3), 1, 0,
+                      rep(0,4), 1,
+                      20, 18, 90, 75, 10,
+                      0, 0, -2, 0, 1
+                      ),
+                    ncol = 5, byrow = TRUE)
+const.dir <- c("=", "<=", ">=", ">=", rep("<=", 6), rep(">=", 2))
+const.rhs <- c(1, 2, 1, 1, 4, 1, 1, 1, 3, 9, 144, rep(0, 1))
+
+# solving model
+lp.solution <- lp("min", objective.fn, const.mat, const.dir, const.rhs, all.int = T)
+lp.solution$solution
+lp.solution
+```
+
+The optimal solution is $X_1$ = 0, $X_2$ = 1, $X_3$ = 0, $X_4$ = 2, $X_5$ = 1, which would be to purchase 1 AMD Ryzen, 2 AMD Radeon 56 and 1 8G RAM Card. He would spend \$1804 on it.
+
+#### (c) Now suppose that the price for Nvidia RTX 2080 GPU is uncertain, fluctuating +55% uniformly based on the current price. You have a budget and thus can pay at most \$1500 for your new PC. What's the probability that you are not able to get the PC you want at the moment? (4 points)
+
+```{r q4c, echo=TRUE}
+
+upper = 1099 * 1.55
+lower = 1099 * 0.45
+
+# formula for uniform distribution
+1 - (650 - lower) / (upper-lower)
+```
+
+In order to find the price of Nvidia RTX 2080 GPU where the objective function (i.e. the cost of the PC) is $\leq$ 1500, we can change the value of the coefficient of $X_3$ (i.e. cost of Nvidia RTX 2080) in the objective function until it is included in the optimal solution and the objective function is $\leq$ 1500. In this case, when the Nvidia RTX 2080 costs \$650 and below, the total PC cost is $\leq$ 1500.
+
+Hence following a uniform distribution and calculating the probability that the price of the Nvidia RTX 2080 is 650 or lower, we find that the probability that I am not able to get the PC I want at the moment is 0.871 (to 3.s.f)

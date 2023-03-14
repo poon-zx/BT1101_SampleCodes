@@ -1,0 +1,438 @@
+---
+title: "BT1101 Final Exam"
+date: '25 Nov 2021, 1:00 - 3:30 PM'
+output: html_document
+---
+
+## Instructions
+
+-   **Rename your R Markdown file `FE_[MatricNumber].rmd`**, and the output will automatically be `FE_[MatricNumber].html`.
+
+-   Select `output: html_document`.
+
+-   Include all code chunks, so include `echo=TRUE` in all chunks.
+
+-   Replace the placeholder text, "Type your answer here.", with your own.
+
+-   Preinstall and include any `library('package_name')` statements before exam starts. Remember that there is no Internet connection during the exam.
+
+-   Code and type your answer in this Rmarkdown file during exam but **keep in mind that you need to copy and paste all your answer (r-chunk and text) into Essay Answer section for each question in Examplify.**
+
+-   Submit your both R Markdown file (.rmd) and HTML (.html) to the folder "Final Exam Submission" in Luminus after Examplify submission and Internet reconnection.
+
+-   This Rmarkdown file serves as a reference. **Only answers submitted in Examplify will be graded.** Zero point will be given for blank submission in Examplify even if you have submitted a complete Rmarkdown/HTML file.
+
+## Preparation
+
+```{r preparation, echo=TRUE, warning = FALSE, message = FALSE}
+
+# predictive/prescriptive analytics
+library(tseries) 
+library(forecast)
+library(lpSolve)
+library(TTR)
+library(caret)
+
+# descriptive analytics
+library(psych)
+library(Rmisc)
+library(rcompanion)
+library(rpivotTable)
+library(EnvStats) 
+library(car)
+library(rstatix)
+
+# general use
+library(dplyr)
+library(tidyr)
+library(knitr)
+
+options(scipen=999)
+```
+
+## Structured Question 1: CardioGood Fitness [Total 13 marks, marks indicated for each sub-question]
+
+Context: The data and question is adapted from (<https://www.kaggle.com/saurav9786/cardiogoodfitness>).
+
+Your market research team at AdRight is assigned the task to identify the profile of the typical customer for each treadmill product offered by CardioGood Fitness. Your team decides to investigate whether there are differences across the product lines with respect to customer characteristics. The team decides to collect data on individuals who purchased a treadmill at a CardioGoodFitness retail store during the prior three months.
+
+The data are stored in the `CardioGoodFitness.csv` file. The team identifies the following customer variables to study:
+
+-   `Product`: product purchased (TM195, TM498, or TM798)
+-   `Gender`: Female or Male
+-   `Age`: in years
+-   `Education`: number of years of education
+-   `MaritalStatus`: Single or Partnered
+-   `Income`: annual household income (\$)
+-   `Usage`: average number of times the customer plans to use the treadmill each week
+-   `Miles`: average number of miles the customer expects to walk/run each week
+-   `Fitness`: self-rated fitness on an 1-to-5 scale, where 1 is poor shape and 5 is excellent shape.
+
+You are tasked by your team to help in the tasks below towards creating a better understanding of the customer profile of the CardioGood Fitness treadmill product line.
+
+```{r data-read-in1, echo=T, eval=T}
+CG <- read.csv("CardioGoodFitness.csv")
+```
+
+#### Q1.(a) Customer Profile by Product Dashboard (I).
+
+This dashboard should enable the team to better understand the demographics of the customers for different types of treadmill products.
+
+-   Create a table and chart to compare the frequency distributions for customer gender by different product types. Make sure you add the appropriate titles, legend and use different shades of one color as the color palette for the chart. [You are not required to perform outlier analyses for this question part]
+
+[2 marks]
+
+```{r q1a, echo=TRUE}
+
+# Contingency Table for Customer Gender by Different Product Types
+CGa <- CG %>% 
+  group_by(Gender, Product) %>% 
+  tally()
+CGa.spread <- CGa %>% 
+  spread(key = Gender, value = n) #spread converts from long to wide
+CGa.spread[is.na(CGa.spread)] <- 0
+kable(CGa.spread, caption = "Table for Gender and Product Type")
+
+# Use Grouped Barplot to display the data
+barmatrix.CGa <- as.matrix(CGa.spread[, c(2:3)])
+bp <- barplot(barmatrix.CGa, col = c("deepskyblue", "cadetblue1", "cornflowerblue"), main = "Frequency for Customer Gender by Different Product Types", xlab = "Gender", ylab = "No. of People", beside = TRUE, ylim = c(0, 60))
+legend("topright", title = "Product Types", cex = 0.65, fill = c("deepskyblue", "cadetblue1", "cornflowerblue"), legend = CGa.spread$Product)
+text(bp, barmatrix.CGa, round(barmatrix.CGa, 1),cex=1,pos=3) 
+
+```
+
+#### Q1.(b) Customer Profile by Product Dashboard (II).
+
+Continuing on the dashboard you have created in 1a...
+
+-   Create a table to compare the means for each of the following customer profile variables `Age`, `Education`, `Usage`, `Fitness`, `Income`, and `Miles`. This should be one table with each product along the rows and the means for each variable along the columns. From the table, how would you describe the customer profile for the 3 types of products? [You are not required to perform outlier analyses for this question part]
+
+[3 marks]
+
+```{r q1b, echo=TRUE}
+
+table <- CG %>% 
+  group_by(Product) %>% 
+  summarise(Age = mean(Age),
+            Education = mean(Education),
+            Usage = mean(Usage),
+            Fitness = mean(Fitness),
+            Income = mean(Income),
+            Miles = mean(Miles)) %>%
+  mutate(across(where(is.double), round, 2))
+
+kable(table, row.names = FALSE, caption = "Descriptive Statistics for Mean Age, Education, Usage, Fitness, Income, and Miles across Product (Credits Kay)")
+```
+
+Insert description of the Customer Profile of the 3 different types of products.
+
+#### Q1.(c) Inspect Customer Income Data (I)
+
+-   Conduct an outlier analyses on the `Income` variable. Describe your conclusion from this analyses.
+
+[2 marks]
+
+```{r q1c, echo=TRUE}
+
+# start with a histogram
+hist(CG$Income,main = "Histogram of Yearly Household Income of Customers", xlab = "Yearly Household Income of Customers", ylab = "No. of Customers",col = c("gold"), labels = TRUE, xlim = c(20000,120000), ylim = c(0,60))
+
+# Use boxplot of 1.5 * IQR first (all outliers)
+box.all <- boxplot(CG$Income, horizontal = TRUE, xlab = "Annual Household Income ($)", main = "Boxplot of Income showing all Outliers")
+
+# Obtain the outliers (all outliers)
+outliers <- box.all$out
+outliers
+
+# Use boxplot of 3 * IQR (Extreme Outliers)
+box.extreme <- boxplot(CG$Income, horizontal = TRUE, range = 3, xlab = "Annual Household Income ($)", main = "Boxplot of Income showing Extreme Outliers")
+
+# Obtain the outliers (extreme outliers)
+outliers <- box.extreme$out
+outliers
+```
+
+From the histogram, it can be seen that the graph is rather right skewed, indicating that there may be a few outlier values where the customer yearly income is very high.
+
+When plotting the default boxplot which shows all outliers outside the range of 1.5 \* Inter Quartile Range (IQR), there are 19 data points that can be seen as outliers. Additionally, when plotting another boxplot but now extending the plot whiskers to 3 \* IQR instead, it can be seen that there are 2 data points that lie outside this range, hence they can be classified as extreme outliers. However, the two extreme outliers, which are customers with a yearly income of slightly above \$100,000, have incomes that are relatively reasonable yearly incomes for a person to have. Hence, although these two people are extreme outliers to the data, it is definitely not advisable to remove him/her from the data set as he/she may provide valuable data in other categories. As such, I believe this data set does not have any outliers.
+
+#### Q1.(d) Inspect Customer Income Data (II)
+
+-   CardioGood Fitness believes that the actual proportion of customers with income more than \$60,000 is less than 30%. Use the sample data to test this hypothesis.
+
+[3 marks]
+
+```{r q1d, echo=T}
+
+HigherIncome <- CG %>% 
+  filter(Income > 60000)
+pCust <- nrow(HigherIncome) / nrow(CG)
+z <- (pCust - 0.3) / sqrt(0.3 * (1-0.3)/nrow(CG))
+cv <- qnorm(0.05)
+z < cv
+```
+
+Let u0 be the population proportion of customers with income more than \$60,000.
+
+H0: u0 \>= 0.3
+
+H1: u0 \< 0.3
+
+Since the z value is less than the critical value, the z-statistic lies in the lower critical region, hence we have sufficient evidence to reject H0. Thus the data shows that the population proportion of customers with income more than \$60,000 is less than 30%, at a 5% level of significance.
+
+Q1.(e) Conduct hypothesis testing.
+
+You are asked to test if there is any difference in mean income of customers purchasing the 3 different types of treadmill.
+
+-   Set up the hypotheses (H0 & H1) and test your hypotheses. Describe the results and conclusions. In your answer be sure to explain clearly, how you arrived at your conclusion.
+
+[3 marks]
+
+```{r q1e, echo=T}
+# since there are more than two sample test for means, use ANOVA
+# H0: all means same, H1: at least one mean is different from the others
+# for reliable ANOVA results, must satisfy three assumptions: 1. data points independent 2. within groups, data normally distributed 3. distributions equal variance
+
+# check normality across different groups
+par(mfcol = c(2,2))
+one <- CG %>% filter(Product == "TM195")
+two <- CG %>% filter(Product == "TM498")
+three <- CG %>% filter(Product == "TM798")
+
+# plot histogram
+hist(one$Income, main = "Histogram for TM195", xlab = "Income")
+hist(two$Income, main = "Histogram for TM498", xlab = "Income")
+hist(three$Income, main = "Histogram for TM798", xlab = "Income")
+
+# plot qqplots
+par(mfcol = c(2,2))
+qqnorm(one$Income, main = "QQplot for TM195", ylab = "Salary")
+qqline(one$Income)
+qqnorm(two$Income, main = "QQplot for TM498", ylab = "Salary")
+qqline(two$Income)
+qqnorm(three$Income, main = "QQplot for TM798`", ylab = "Salary")
+qqline(three$Income)
+
+lapply(list(one, two, three), function(CG)
+  {
+  shapiro.test(CG$Income)
+})
+
+# check sample sizes across product types (if group sizes are similar, ANOVA is fairly robust to unequal variances)
+table(CG$Product)
+
+# check equal variance assumption
+fligner.test(Income~Product, CG)
+
+# Welch Anova Test
+wa <- CG %>% welch_anova_test(Income~Product)
+wa
+
+# games howell test 
+gh.out1 <- games_howell_test(CG, Income~Product)
+gh.out1
+
+```
+
+We will use an ANOVA test. However for the ANOVA test results to be reliable, it assumes three conditions: 1. data points independent 2. within groups, data normally distributed 3. distributions equal variance. The first point can be easily validated as random samples were chosen. Next we have to verify if the data is normally distributed, which as seen from the various tests, it can be seen that the W statistic value for all 3 treadmill type groups are above 0.9 with each histogram displaying relatively normal distributions as well. Hence it can be concluded that the annual income for each product type is approximately normally distributed.
+
+Using the Fligner-Killeen test of homogeneity of variances to check whether the samples have equal variances, we got a p-value of \<0.05. This means we reject the null hypothesis that all input samples are from populations with equal variances. If samples sizes are equal, the violation of the third assumption (equal variances) would not have serious effects, however as seen above the sample sizes differ greatly for all 3 product types. Hence, we will use the Welch ANOVA test instead.
+
+For Welch-ANOVA test, let u1, u2, and u3 be the mean incomes for the product types TM195, TM498 and TM798 respectively.
+
+H0: u1 = u2 = u3, H1: at least one mean is different from the others
+
+As seen from the Welch-ANOVA test, the p-value \< 0.05 which means that we can reject the null hypothesis that the mean income is the same across product types. Hence we can conclude that the mean income of customers is significantly different across the 3 different types of treadmill at a 5% level of significance.
+
+As seen from the Games-Howell post HOC test, there is a significant difference in customer income between those who purchase the TM195 and TM798 treadmill, as well as those who purchase the TM498 and TM798 treadmill, as the p-value for these combinations is \< 0.05.
+
+# Structured Question 2 [Total 14 marks, marks indicated for each sub-question]
+
+This question is based off a subset of the dataset collected in the following paper:
+
+Harrison, David & Rubinfeld, Daniel. (1978). Hedonic housing prices and the demand for clean air. Journal of Environmental Economics and Management. 5. 81-102.
+
+And is available at: <https://www.kaggle.com/fedesoriano/the-boston-houseprice-data>
+
+This data consists of 506 neighborhoods and their associated variables. For this question we'll just look at three variables.
+
+-   `MedianValueInThousands`: Median value of owner-occupied homes, in \$1,000's.
+-   `PupilTeacherRatio`: pupil-teacher ratio in that neighborhood
+-   `BordersRiver`: dummy variable that is 1 if neighborhood borders the river; 0 otherwise
+
+```{r data-read-in2, echo=T, eval=T}
+HS <- read.csv("finalexam-housing.csv")
+```
+
+### (a):
+
+(The dataset comes from a paper published in 1978, so let's imagine we're in 1978 now.) Your friend Jane is looking for a house in this city that the data comes from. Because she has young kids, her main priority is that the house has to be in a good school district. You see that in your dataset, you have a good proxy for education quality: the ratio of pupils to teachers, in `PupilTeacherRatio`.
+
+What is the mean and standard deviation of `MedianValueInThousands`?
+
+What is the mean and standard deviation of `PupilTeacherRatio`?
+
+All else being equal, is a higher or lower `PupilTeacherRatio` better? Why?
+
+[4 mark]
+
+```{r q2a, echo=T}
+
+first <- describe(HS$MedianValueInThousands) %>% select(mean, sd) %>% mutate(across(where(is.double), round, 2))
+second <- describe(HS$PupilTeacherRatio) %>% select(mean, sd) %>% mutate(across(where(is.double), round, 2))
+table <- rbind(first,second)
+row.names(table) <- c("MedianValueInThousands", "PupilTeachRatio")
+kable(table, caption = "Descriptive Statistics for MedianValueInThousands and PupilTeachRatio")
+```
+
+State the mean and sd values above
+
+With all else being equal, it is better to have a lower pupil-teacher ratio. This would allow the teacher to spend more time to cultivate students and teach them proper concepts as the class size is lower and the teacher has to teach less students, hence more attention is given to every individual student.
+
+### (b):
+
+Jane's other priority is that she wants to live near the river.
+
+Using `PupilTeacherRatio` and `BordersRiver` as predictors, please fit a linear model to predict the median home price (`MedianValueInThousands`).
+
+Include your code in the textbox below.
+
+Interpret the intercept, and the coefficients on `PupilTeacherRatio` and `BordersRiver`, as we usually do in class.
+
+According to this model, what is the average price of a home in a neighborhood next to the river, with a pupil-to-teacher ratio that is one standard deviation better than the mean?
+
+Please write your answers as if to Jane, to explain what your findings are.
+
+[6 marks]
+
+```{r q2b, echo=TRUE}
+
+jane_model <- lm(MedianValueInThousands ~ PupilTeacherRatio + BordersRiver, HS)
+summary(jane_model)
+
+# one sd better than the mean
+four <- describe(HS$PupilTeacherRatio) %>% select(mean, sd)
+std <- four$mean - four$sd
+
+# create a new data point 
+new.data <- data.frame(PupilTeacherRatio = std, BordersRiver = 1)
+
+# predict the number of affairs 
+pred.fit_r <- predict(jane_model, newdata = new.data, interval = "prediction")
+pred.fit_r
+```
+
+The intercept, 60.9579, is the mean of the median value of owner-occupied homes in \$1,000's (`MedianValueInThousands`) when all other independent variables are at level zero. Since the magnitude of the t-value is large at 20.048 and the p-value is \< 0.05, we reject H0 that the intercept = 0 and conclude that the intercept is significant.
+
+The coefficient before `PupilTeacherRatio` is -2.0977, which means that on average, a one unit increase in average `PupilTeacherRatio` (i.e. a 1 unit increase in average pupil-teacher ratio), the average value of `MedianValueInThousands` decreases by 2.0977 units (i.e. average median value of owner-occupied homes decreases by \$2097.70), when all other independent variables are held constant. Since the magnitude of the t-value is quite large at 12.874 and the p-value is \< 0.05, we reject H0 that the slope parameter of `PupilTeacherRatio` = 0 and conclude that the coefficient of `PupilTeacherRatio` is significant.
+
+The coefficient before `BordersRiver` is 4.1735, which means that on average for neighborhoods that border a river, the average value of `MedianValueInThousands` increases by 4.1735 units (i.e. average median value of owner-occupied homes increases by \$4173.50), when all other independent variables are held constant. Since the magnitude of the t-value is relatively large at 3.005 and the p-value is \< 0.05, we reject H0 that the slope parameter of `BordersRiver` = 0 and conclude that the coefficient of `BordersRiver` is significant.
+
+According to this model, the average price of a home in a neighborhood next to the river, with a pupil-to-teacher ratio that is one standard deviation better than the mean, is \$30958.98.
+
+### (c):
+
+You decide to explore fitting an interaction. Using the same two predictors as above, fit a model with the interaction.
+
+Please interpret the coefficient on `PupilTeacherRatio`, as well as the coefficient on `PupilTeacherRatio:BordersRiver` (i.e., the interaction term).
+
+(If you are struggling, please try to sketch out what the graph will look like, similar to what we did in lecture and in the midterm).
+
+According to this interactive model, what is the average price of a home in a neighborhood next to the river, with a pupil-to-teacher ratio that is one standard deviation better than the mean?
+
+[4 marks]
+
+```{r q2c, echo=TRUE}
+
+inter_model <- lm(MedianValueInThousands ~ PupilTeacherRatio + BordersRiver + PupilTeacherRatio:BordersRiver, HS)
+summary(inter_model)
+
+# one sd better than the mean
+four <- describe(HS$PupilTeacherRatio) %>% select(mean, sd)
+std <- four$mean - four$sd
+
+# create a new data point 
+new.data <- data.frame(PupilTeacherRatio = std, BordersRiver = 1)
+
+# predict the number of affairs 
+pred.fit_r <- predict(inter_model, newdata = new.data, interval = "prediction")
+pred.fit_r
+```
+
+The coefficient before `PupilTeacherRatio` is -2.2147, which means that on average, a one unit increase in average `PupilTeacherRatio` (i.e. a 1 unit increase in average pupil-teacher ratio), the average value of `MedianValueInThousands` decreases by 2.2147 units (i.e. average median value of owner-occupied homes decreases by \$2214.70), when all other independent variables are held constant. Since the magnitude of the t-value is quite large at 13.243 and the p-value is \< 0.05, we reject H0 that the slope parameter of `PupilTeacherRatio` = 0 and conclude that the coefficient of `PupilTeacherRatio` is significant.
+
+The coefficient before `PupilTeacherRatio:BordersRiver` is 1.8515, which means that on average, when `BordersRiver` = 1 (i.e. the house borders a river) as compared to when `BordersRiver` = 0 (i.e. the house does not border a river), a one unit increase in average `PupilTeacherRatio` (i.e. a 1 unit increase in average pupil-teacher ratio) is associated with a larger increase in the average value of `MedianValueInThousands` by another 1.8515 units (i.e. average median value of owner-occupied homes increases by \$1851.50 more for houses that border a river). Since the magnitude of the t-value is relatively large at 2.783 and the p-value is \< 0.05, we reject H0 that the slope parameter of `PupilTeacherRatio:BordersRiver` = 0 and conclude that the coefficient of `PupilTeacherRatio:BordersRiver` is significant.
+
+According to this model, the average price of a home in a neighborhood next to the river, with a pupil-to-teacher ratio that is one standard deviation better than the mean, is \$28876.16.
+
+# Structured Question 3 [Total 13 marks, marks indicated for each sub-question]
+
+Your friend Matthew has just set up his own café. He is very passionate about coffee, and would like to sell two of his specially developed blends: the Signature blend and the Summit blend. He uses the following recipe:
+
+| Blend (units) | Price (\$) | Mix                                   |
+|:--------------|:-----------|---------------------------------------|
+| Signature     | 60         | 0.5kg Sumatran + 0.5kg Columbian      |
+| Summit        | 80         | 0.3kg Colombian + 0.7kg Blue Mountain |
+
+Sumatran coffee beans cost \$20 per kilogram, Colombian coffee beans cost \$35 per kilogram and Blue Mountain coffee bean cost \$50 per kilogram.
+
+Matthew can secure 40kg of Sumatran coffee beans, 50kg of Colombian coffee beans and 30kg of Blue Mountain coffee beans each week from his supplier.
+
+Furthermore, Matthew is a popular barista and will be able to sell all of the blends that he produces. However, he has never run a business before and is unsure how much of each blend he should prepare to maximize his profit. You realize that you can help Matthew formulate this as an optimization problem.
+
+Please also add all the code you write into the textbox, and please ignore all integer constraints in the question.
+
+#### (a)
+
+Please write down the scenario as an optimization problem and show all workings (as we usually do in tutorial and lecture).
+
+What is the optimal profit, and what is the optimal product mix? Additionally, write your recommendation to Matthew in simple terms. [7 marks]
+
+| Maximize total profit using decision variables $X_1$, $X_2$ = number of Signature and Summit blends to prepare respectively | Profit = 32.5 $X_1$ + 34.5 $X_2$ |
+|------------------------------------------------------|-----------------|
+| Subject to                                                                                                                  |                                  |
+| Sumatran Coffee Beans Constraint                                                                                            | 0.5 $X_1$ + $\quad$ $\leq$ 40    |
+| Colombian Coffee Beans Constraint                                                                                           | 0.5 $X_1$ + 0.3 $X_2$ $\leq$ 50  |
+| Blue Mountain Coffee Beans Constraint                                                                                       | $\quad$ + 0.7 $X_2$ $\leq$ 30    |
+| Non-Negativity Constraints                                                                                                  | $X_1$, $X_2$ are $\geq$ 0        |
+
+```{r q3a,echo=T}
+
+```
+
+Given that the question stated to ignore all integer constraints, the optimal solution is $X_1$ = 74.3 (3 s.f.) and $X_2$ = 42.9 (3 s.f.), which would be to prepare 74.3 Signature blends and 42.6 Summit Blends. This would net him a total profit of \$3893 (4 s.f.). Hence my recommendation to Matthew is to prepare 74 Signature blends and 42 Summit Blends each week.
+
+#### (b)
+
+Print out the shadow prices (\$duals) of your solution to the previous part, and write an interpretation for each. Which constraints are binding?
+
+[3 marks]
+
+```{r q3b,echo=T}
+lp.solution$duals
+```
+
+***Constraints:***
+
+-   Sumatran Coffee Beans Constraint (0.5 $X_1$ + $\quad$ $\leq$ 40): An increase of one unit in the right hand side parameter value (i.e. from 40 to 41, which means increasing the number of Sumatran Coffee Beans he can secure weekly by 1kg), holding all else equal, would lead to a 0 unit increase in the objective function (i.e. total profit does not increase). This shows that the constraint is non-binding, hence shadow price is zero.
+
+-   Colombian Coffee Beans Constraint (0.5 $X_1$ + 0.3 $X_2$ $\leq$ 50): An increase of one unit in the right hand side parameter value (i.e. from 50 to 51, which means increasing the number of Columbian Coffee Beans he can secure weekly by 1kg), holding all else equal, would lead to a 65 units increase in the objective function (i.e. total profit increases by \$65). This shows that the constraint is binding, hence the shadow price is non-zero
+
+-   Blue Mountain Coffee Beans Constraint ($\quad$ + 0.7 $X_2$ $\leq$ 30): An increase of one unit in the right hand side parameter value (i.e. from 30 to 31, which means increasing the number of Blue Mountain Coffee Beans he can secure weekly by 1kg), holding all else equal, would lead to a 21.4 units (3 s.f.) increase in the objective function (i.e. total profit increases by \$21.40). This shows that the constraint is binding, hence the shadow price is non-zero
+
+-   Non-Negativity Constraints ($X_1$, $X_2$ are $\geq$ 0): An increase of one unit in the right hand side parameter value (i.e. from 0 to 1), holding all else equal, would lead to a 0 unit increase in the objective function (i.e. total profit does not increase). This shows that the constraint is non-binding, hence shadow price is zero. This is because it is optimal to produce both the Summit and Signature Mix.
+
+#### (c)
+
+The Summit blend is a hit with Matthew's customers. Is it possible for Matthew to prepare more of the Summit blend each week? Why or why not? What would he need to do? [3 marks]
+
+```{r q3c,echo=T}
+# this code isnt needed at all but just putting here for future reference
+# display range of objective coefs where current solution is valid
+range.objcoef = cbind(lp.solution$sens.coef.from, lp.solution$sens.coef.to)
+rownames(range.objcoef) = c('×1', 'x2')
+colnames(range.objcoef) = c('from', 'to')
+print(range.objcoef)
+```
+
+It is not possible for Matthew to prepare more Summit blend since the constraint for Blue Mountain Coffee Beans is binding. This means that Matthew is already utilizing all the Blue Mountain Coffee Beans he has. Hence, since only the Summit Blend uses Blue Mountain Coffee Beans, it is not possible for him to prepare more Summit Blend unless he manages to secure more Blue Mountain Coffee Beans weekly from his supplier. Lowering the amount of Signature Blend he makes would not have any effect as it does not require Blue Mountain Coffee Beans.

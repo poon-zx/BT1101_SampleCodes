@@ -1,0 +1,270 @@
+---
+title: "BT1101 Final Exam: RMarkdown Template"
+author: "BT1101 Student. REPLACE WITH YOUR NAME"
+date: '29 April 2022, 9:00 - 11:30AM'
+output: html_document
+---
+
+## Instructions
+
+-   **Rename your R Markdown file `FE_Student#.rmd`**, replacing Student# with your Student number that starts with A (e.g. A0202020) and the output will automatically be `FE_Student#.html`.
+
+-   Select `output: html_document`.
+
+-   Include all code chunks, so include `echo=TRUE` in all chunks.
+
+-   Replace the placeholder text, "Type your answer here.", with your own.
+
+-   Pre-install and include any `library('package_name')` statements before exam starts. Remember that there is NO Internet connection during the exam.
+
+-   Code and type your answer in this Rmarkdown file during exam but **keep in mind that you need to copy and paste all your answer (r-chunk and text) into Essay Answer section for each question in Examplify.**
+
+-   Submit your both R Markdown file (.rmd) and HTML (.html) to the folder "Final Exam Submission" in Luminus after Examplify submission and Internet reconnection.
+
+-   This Rmarkdown file serves as a reference. **Only answers submitted in Examplify will be graded.** Zero point will be given for blank submission in Examplify even if you have submitted a complete Rmarkdown/HTML file.
+
+## Preparation
+
+```{r preparation, echo=TRUE, warning = FALSE, message = FALSE}
+
+# predictive/prescriptive analytics
+library(tseries) 
+library(forecast)
+library(lpSolve)
+library(TTR)
+
+# descriptive analytics
+library(psych)
+library(Rmisc)
+library(rcompanion)
+library(rpivotTable)
+library(EnvStats) 
+library(car)
+library(rstatix)
+
+# general use
+library(wooldridge)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(tidyverse)
+```
+
+## Question 2: GDP and Unemployment (Total: 12 marks; marks as indicated for each sub-question)
+
+Gross domestic product (GDP) is the total market value of all finished goods and services within a country or region's border in a specific time period (usually in a year). It is an important macro-economic metric to predict since it functions as simple scorecard of a given country's economic health.
+
+-   Data set: `okun` in `wooldridge` public data sets.
+
+```{r okun-loaddta}
+# load the data set, make sure you already load `wooldridge` package
+data(okun) 
+```
+
+This data set contains 47 yearly observations on 4 variables on GDP and unemployment rate in U.S. from 1959 to 2005. The variables are the following:
+
+-   `year`: 1959 to 2005
+-   `pcrgdp`: percentage change in real GDP
+-   `cunem`: change in unemployment percentage, i.e., unem[t] - unem[t-1]
+-   `unem`: unemployment rate
+
+```{r okun-prep}
+# Define time series 
+pcrgdp = ts(okun$pcrgdp, frequency = 1, start = 1959)
+cunem = ts(okun$cunem, frequency = 1, start = 1959)
+
+# create time trend variable in `okun` dataframe
+okun$t = seq(from = 1, to = length(1959:2005))
+```
+
+#### Q2.(a) First examine if the time series data exhibits any trend.
+
+-   Please plot both change in GDP (`pcrgdp`) and change in unemployment rate (`cunem`) against time. Do you observe any trend? (2 marks)
+-   Run two simple linear regression models: `pcrgdp ~ t` and `cunem ~ t`. What do you make of time trend variable `t` in these two models? Is it consistent with what you observe in the plots? (2 marks)
+
+```{r 2a, echo=T}
+ggplot(okun, aes(x = year)) + geom_line(aes(y = pcrgdp, colour = "pcrgdp")) + geom_line(aes(y = cunem, colour = "cunem")) + ggtitle("Graph of change in GDP and change in unemployment rate against Time") + labs(y = "pcrgdp / cunem")
+
+summary(lm(pcrgdp ~ t, okun))
+summary(lm(cunem ~ t, okun))
+```
+
+For `pcrgdp`, it can be seen there is a slight decreasing trend as the change in GDP is relatively high in 1959 (7.1%), however it decreases to 3.2% at the end of the dataset which is in 2005. However for `cunem`, a clear trend cannot be observed as it is mostly fluctuating around the value of 0%.
+
+Looking at the coefficients of `t` in both linear regression models, for `pcrgdp` the coefficient before `t` is -0.03542, which means that on average for every year that passes, the average value of `pcrgdp` decreases by 0.03542 units (i.e. a 0.03542% decrease in change of real GDP), when all other independent variables are held constant. This is consistent with what I observe in the plot, as it can be seen in the plot that where is a slight decreasing overall trend in `pcrgdp`. However, since the magnitude of the t-value is low at 1.613 and the p-value is \> 0.05, we do not reject H0 that the slope parameter of `t` = 0 and conclude that the coefficient of `t` is not statistically significant.
+
+For `cunem` the coefficient before `t` is -0.003417, which means that on average for every year that passes, the average value of `cunem` decreases by 0.003417 units (i.e. a 0.003417% decrease in change of unemployment percentage), when all other independent variables are held constant. This is consistent with what I observe in the plot, as it can be seen in the plot that there is a extremely small decreasing trend of `cunem`. However, since the magnitude of the t-value is low at 0.337 and the p-value is \> 0.05, we do not reject H0 that the slope parameter of `t` = 0 and conclude that the coefficient of `t` is not statistically significant.
+
+#### Q2(b). Based on your observation in part (a), which exponential smoothing model you will choose to predict change in GDP (`pcrgdp`)? What is your predicted change in GDP in year 2006? (2 marks)
+
+```{r 2b, echo=T}
+
+# Fit HoltWinters model to the data
+hw1 = HoltWinters(pcrgdp, gamma = FALSE)
+hw1
+hw1_pred <- predict(hw1, n.ahead = 1)
+hw1_pred
+```
+
+Based on my observation in part (a), the data for `pcrgdp` shows a trend. However, no seasonality is observed as there does not appear to be any pattern or effect that occurs at a fixed interval. Hence, since the exponential smoothing model needs to account for the presence of a trend, but not seasonality, I would use a double exponential smoothing model.
+
+It can be seen above that based on the Holt-Winters exponential smoothing model, the predicted change in GDP in year 2006 is 3.33% (3 s.f.)
+
+#### Q2(c). Many macroeconomists believed that change in GDP (`pcrgdp`) and change in unemployment rate (`cunem`) follows a close relationship, coined by the name of "Okun's Law":
+
+$$pcrgdp_t = 3 - 2*cunem_t$$ It means that if the unemployment rate is stable (i.e., cunem = 0), GDP in the same year grows at 3% annually. An increase in unemployment rate is negatively correlated with GDP growth. To see if the data on the U.S. economy support Okun's Law:
+
+-   Please write out the regression model you specify to test the Okun's theory. (2 marks)
+-   Use the dataframe `okun` to estimate your model above. How do you interpret the coefficient of `cunem`? (2 marks)
+
+```{r 2c, echo=T}
+okun_law <- lm(pcrgdp ~ cunem, okun)
+summary(okun_law)
+```
+
+In order to test out the theory, I would conduct a linear regression model with `pcrgdp` as the dependent variable and `cunem` as the independent variable (i.e. `pcrgdp` \~ `cunem`).
+
+Using the `okun` dataset to estimate the model, the coefficient before `cunem` is -1.8909, , which means that on average, a one unit increase in average `cunem` (i.e. a 1% increase in the average change in unemployment percentage), the average value of `pcrgdp` decreases by 1.8909 units (i.e. average percentage change in real GDP decreases by 1.8909%), when all other independent variables are held constant. Since the magnitude of the t-value is quite large at 10.39 and the p-value is \< 0.05, we reject H0 that the slope parameter of `cunem` = 0 and conclude that the coefficient of `cunem` is significant.
+
+#### Q2.(d) Jointly test if $H_0$: the intercept is equal to 3 *and* slope parameter for `cunem` is equal to -2 . Does the test reject at 5% significance level? What would you say if the data reject or tend to support Okun's Law? (2 marks)
+
+```{r 2d, echo=T}
+
+# Using LinearHypothesis on the previous model
+linearHypothesis(okun_law, c("(Intercept) = 3", "cunem = -2"))
+```
+
+Using linearHypothesis() to conduct a joint hypothesis test, the F-value is 2.41 (to 3 s.f.) and the p-value = 0.102 (to 3 s.f.) which is \> 0.05. Hence, we have insufficient evidence to reject H0 that `Intercept = 3` and `cunem = -2` at 5% level of significance. Thus, we can conclude that the data tends to support Okun's Law.
+
+## Question 3: Diet Planning (Total: 18 marks; marks as indicated for each sub-question)
+
+Penland residence hall is welcoming new college freshmen on board. Daniel needs to decide his diet plan to meet his daily goal of energy consumption and nutritional requirement. The following table lists the minimum intake for this daily dietary target.
+
+| Calories (kCal) | Protein (g) | Fat (g) | Iron (mg) | Vitamin B12 (mg) |
+|:----------------|:------------|:--------|:----------|:-----------------|
+| 2200            | 56          | 10      | 15        | 2                |
+
+Penland hall provides three meals plans for residents to choose from. Meal plan is compulsory and each resident could choose up to two plans. To accommodate the meal plans, students are free to purchase *any* amount of snacks, energy bar and vitamin supplement in self-serving station. Daily cost and nutritional details of dietary options are summarized as below. (Vegetarian choices are open to all students.)
+
+| Dietary Plan | Cost | Utility | Calories (kCal) | Protein (g) | Fat (g) | Iron (mg) | Vitamin B12 (mg) | Vegetarian |
+|:-------------|:-----|:--------|:----------------|:------------|:--------|:----------|:-----------------|:-----------|
+| Meal Plan A  | \$8  | 60      | 2600            | 42          | 18      | 8         | 1.5              |            |
+| Meal Plan B  | \$14 | 45      | 2000            | 62          | 8       | 16        | 2.5              |            |
+| Meal Plan C  | \$11 | 30      | 1500            | 50          | 5       | 12        | 0.5              | Yes        |
+| Snacks       | \$3  | 20      | 350             | 10          | 4       | 5         | \-               | Yes        |
+| Energy Bar   | \$2  | 15      | 1600            | 5           | 8       | \-        | \-               | Yes        |
+| Supplement   | \$7  | \-      | \-              | \-          | \-      | 10        | 2                | Yes        |
+
+#### Q3.(a) Daniel needs to decide his dietary consumption profile to minimize his expenditure. At the same time, he would like to stay happy and keep an utility (i.e., happiness) level of 12955 and above.
+
+-   What is/are Daniel's decision variable(s)? Clearly define and label his decision variable(s) below. (1 mark)
+-   Write out his objective function. (1 mark)
+
+Daniel's decision variables are $X_1$, $X_2$, $X_3$, $X_4$, $X_5$, $X_6$ = Meal Plan A, Meal Plan B, Meal Plan C, and number of Snacks, Energy Bar and Supplements to purchase respectively
+
+Objective function: Expenditure = 8 $X_1$ + 14 $X_2$ + 11 $X_3$ + 3 $X_4$ + 2 $X_5$ + 7 $X_6$
+
+#### Q3.(b) Formulate Daniel's diet planning problem in a table, including his objective function and *all* relevant constraints.
+
+Do not solve the problem yet. (5 marks)
+
+| Minimize total expenditure using decision variables $X_1$, $X_2$, $X_3$, $X_4$, $X_5$, $X_6$ = Meal Plan A, Meal Plan B, Meal Plan C, and number of Snacks, Energy Bar and Supplements to purchase respectively | Expenditure = 8 $X_1$ + 14 $X_2$ + 11 $X_3$ + 3 $X_4$ + 2 $X_5$ + 7 $X_6$           |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| Subject to                                                                                                                                                                                                      |                                                                                     |
+| Calories Constraint                                                                                                                                                                                             | 2600 $X_1$ + 2000 $X_2$ + 1500 $X_3$ + 350 $X_4$ + 1600 $X_5$ + $\quad$ $\geq$ 2200 |
+| Protein Constraint                                                                                                                                                                                              | 42 $X_1$ + 62 $X_2$ + 50 $X_3$ + 10 $X_4$ + 5 $X_5$ + $\quad$ $\geq$ 56             |
+| Fat Constraint                                                                                                                                                                                                  | 18 $X_1$ + 8 $X_2$ + 5 $X_3$ + 4 $X_4$ + 8 $X_5$ + $\quad$ $\geq$ 10                |
+| Iron Constraint                                                                                                                                                                                                 | 8 $X_1$ + 16 $X_2$ + 12 $X_3$ + 5 $X_4$ + $\quad$ + 10$X_6$ $\geq$ 15               |
+| Vitamin B12 Constraint                                                                                                                                                                                          | 1.5 $X_1$ + 2.5 $X_2$ + 0.5 $X_3$ + $\quad$ + $\quad$ + 2 $X_6$ $\geq$ 2            |
+| Compulsory Meal Plan Constraint                                                                                                                                                                                 | $X_1$ + $X_2$ + $X_3$ $\geq$ 1                                                      |
+| Maximum Meal Plan Constraint                                                                                                                                                                                    | $X_1$ + $X_2$ + $X_3$ $\leq$ 2                                                      |
+| Utility Level Constraint                                                                                                                                                                                        | 60 $X_1$ + 45 $X_2$ + 30 $X_3$ + 20 $X_4$ + 15 $X_5$ + $\quad$ $\geq$ 12955         |
+| Binary Variables Constraint                                                                                                                                                                                     | $X_1$, $X_2$, $X_3$ are binary variables (only can take value of 0 or 1)            |
+| Integer, Non-Negativity Constraints                                                                                                                                                                             | $X_1$, $X_2$, $X_3$, $X_4$, $X_5$, $X_6$ are integers and $\geq$ 0                  |
+
+#### Q3.(c) Solve this optimization problem in R.
+
+-   What are Daniel's optimal dietary profile and optimal objective value? (4 marks)
+-   What is Daniel's fat intake under the optimal diet? (1 mark)
+
+```{r 3c, echo=T}
+#defining parameters
+objective.fn <- c(8, 14, 11, 3, 2, 7)
+const.mat <- matrix(c(2600, 2000, 1500, 350, 1600, 0,
+                      42, 62, 50, 10, 5, 0, 
+                      18, 8, 5, 4, 8, 0,
+                      8, 16, 12, 5, 0, 10,
+                      1.5, 2.5, 0.5, 0, 0, 2,
+                      1, 1, 1, 0, 0, 0,
+                      1, 1, 1, 0, 0, 0,
+                      60, 45, 30, 20, 15, 0
+                      ), 
+                      ncol=6 , byrow=TRUE) 
+const.dir <- c(rep(">=", 6), "<=", ">=")
+const.rhs <- c(2200, 56, 10, 15, 2, 1, 2, 12955)
+
+#solving model
+lp.solution <- lp("min", objective.fn, const.mat, const.dir, const.rhs, binary.vec = c(1:3), int.vec = c(4:6))
+lp.solution$solution #decision variables values 
+lp.solution
+
+# fat intake
+18 + 860 * 8
+```
+
+The optimal solution is $X_1$ = 1, $X_2$ = 0, $X_3$ = 0, $X_4$ = 0, $X_5$ = 860 and $X_6$ = 1. This means that his optimal dietary profile is to purchase Meal Plan A, and also consume 860 Energy Bars and 1 Supplement. This would cost him \$1735, which is the optimal objective value.
+
+With this optimal diet, Daniel's fat intake is 6898g.
+
+#### Q3.(d) High-fat food consumption increases the risk of steatosis, e.g., fat liver. What if Daniel decided to become vegetarian?
+
+-   What would be his optimal vegetarian diet plan? (3 marks)
+-   Would fat intake be lower being vegetarian? What would be his fat intake at optimum? (1 mark)
+-   What is the "price" of being vegetarian? (2 marks)
+
+| Minimize total expenditure using decision variables $X_1$, $X_2$, $X_3$, $X_4$, $X_5$, $X_6$ = Meal Plan A, Meal Plan B, Meal Plan C, and number of Snacks, Energy Bar and Supplements to purchase respectively | Expenditure = 8 $X_1$ + 14 $X_2$ + 11 $X_3$ + 3 $X_4$ + 2 $X_5$ + 7 $X_6$           |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| Subject to                                                                                                                                                                                                      |                                                                                     |
+| Vegetarian Constraint                                                                                                                                                                                           | $X_1$ + $X_2$ = 0                                                                   |
+| Calories Constraint                                                                                                                                                                                             | 2600 $X_1$ + 2000 $X_2$ + 1500 $X_3$ + 350 $X_4$ + 1600 $X_5$ + $\quad$ $\geq$ 2200 |
+| Protein Constraint                                                                                                                                                                                              | 42 $X_1$ + 62 $X_2$ + 50 $X_3$ + 10 $X_4$ + 5 $X_5$ + $\quad$ $\geq$ 56             |
+| Fat Constraint                                                                                                                                                                                                  | 18 $X_1$ + 8 $X_2$ + 5 $X_3$ + 4 $X_4$ + 8 $X_5$ + $\quad$ $\geq$ 10                |
+| Iron Constraint                                                                                                                                                                                                 | 8 $X_1$ + 16 $X_2$ + 12 $X_3$ + 5 $X_4$ + $\quad$ + 10$X_6$ $\geq$ 15               |
+| Vitamin B12 Constraint                                                                                                                                                                                          | 1.5 $X_1$ + 2.5 $X_2$ + 0.5 $X_3$ + $\quad$ + $\quad$ + 2 $X_6$ $\geq$ 2            |
+| Compulsory Meal Plan Constraint                                                                                                                                                                                 | $X_1$ + $X_2$ + $X_3$ $\geq$ 1                                                      |
+| Maximum Meal Plan Constraint                                                                                                                                                                                    | $X_1$ + $X_2$ + $X_3$ $\leq$ 2                                                      |
+| Utility Level Constraint                                                                                                                                                                                        | 60 $X_1$ + 45 $X_2$ + 30 $X_3$ + 20 $X_4$ + 15 $X_5$ + $\quad$ $\geq$ 12955         |
+| Binary Variables Constraint                                                                                                                                                                                     | $X_1$, $X_2$, $X_3$ are binary variables (only can take value of 0 or 1)            |
+| Integer, Non-Negativity Constraints                                                                                                                                                                             | $X_1$, $X_2$, $X_3$, $X_4$, $X_5$, $X_6$ are integers and $\geq$ 0                  |
+
+```{r 3d, echo=T}
+#defining parameters
+objective.fn <- c(8, 14, 11, 3, 2, 7)
+const.mat <- matrix(c(1, 1, 0, 0, 0, 0, 
+                      2600, 2000, 1500, 350, 1600, 0,
+                      42, 62, 50, 10, 5, 0, 
+                      18, 8, 5, 4, 8, 0,
+                      8, 16, 12, 5, 0, 10,
+                      1.5, 2.5, 0.5, 0, 0, 2,
+                      1, 1, 1, 0, 0, 0,
+                      1, 1, 1, 0, 0, 0,
+                      60, 45, 30, 20, 15, 0
+                      ), 
+                      ncol=6 , byrow=TRUE) 
+const.dir <- c("=", rep(">=", 6), "<=", ">=")
+const.rhs <- c(0, 2200, 56, 10, 15, 2, 1, 2, 12955)
+
+#solving model
+lp.solution <- lp("min", objective.fn, const.mat, const.dir, const.rhs, binary.vec = c(1:3), int.vec = c(4:6))
+lp.solution$solution #decision variables values 
+lp.solution
+
+# fat intake
+5 + 862 * 8
+```
+
+The optimal vegetarian solution is $X_1$ = 0, $X_2$ = 0, $X_3$ = 1, $X_4$ = 0, $X_5$ = 862 and $X_6$ = 1. This means that his optimal dietary profile is to purchase Meal Plan C, and also consume 862 Energy Bars and 1 Supplement. This would cost him \$1742, which is the optimal objective value for the optimal vegetarian meal plan.
+
+His fat intake is now 6901g at optimum, which is higher. Hence his fat intake is not lower being vegetarian.
+
+Switching to a vegetarian meal plan, he has to pay \$1742 - \$1735 = \$7 more. Hence, it can be said that the "price" of being vegetarian is \$7.
